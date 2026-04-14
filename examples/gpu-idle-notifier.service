@@ -1,0 +1,13 @@
+﻿[Unit]
+Description=GPU Idle Notifier (WeChat)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/gpu-idle-notifier
+ExecStart=/usr/bin/python3 -m gpu_idle_notifier --config /path/to/gpu-idle-notifier/config.json
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
