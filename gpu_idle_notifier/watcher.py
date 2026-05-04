@@ -5,7 +5,7 @@ import signal
 import subprocess
 import time
 
-from .config import AppConfig
+from .config import AppConfig, NotifyProviderConfig
 from .gpu_query import NvidiaQueryClient
 from .job_runner import JobRunner
 from .message_builder import (
@@ -14,7 +14,7 @@ from .message_builder import (
     build_job_start_message,
 )
 from .models import GPUInfo
-from .notifier import ServerChanNotifier
+from .notifier import build_notifier
 from .state_store import JsonStateStore
 
 
@@ -24,7 +24,11 @@ class GPUWatcher:
         self.state_store = JsonStateStore(config.state_file)
         self.state = self.state_store.load()
         self.query_client = NvidiaQueryClient(config.watch_gpu_indices, config.threshold)
-        self.notifier = ServerChanNotifier(config.send_key)
+        notify_providers = config.notify_providers
+        if not notify_providers and config.send_key:
+            # AppConfig objects built directly in tests may bypass load_config().
+            notify_providers = [NotifyProviderConfig(type="serverchan", send_key=config.send_key)]
+        self.notifier = build_notifier(notify_providers)
         self.job_runner = JobRunner(config.auto_run_job)
         self.running = True
 
@@ -58,8 +62,10 @@ class GPUWatcher:
         ) or "no-gpu"
         logging.info("Check completed | %s", summary)
 
-        self._maybe_notify(gpus, confirmed_idle)
-        self._maybe_run_auto_job(gpus, confirmed_idle)
+        idle_notified = self._maybe_notify(gpus, confirmed_idle)
+        job_ran = self._maybe_run_auto_job(gpus, confirmed_idle)
+        if self._should_stop_after_once_work(idle_notified, job_ran):
+            self.running = False
         self.state_store.save(self.state)
 
     def _register_signal_handlers(self) -> None:
@@ -88,10 +94,11 @@ class GPUWatcher:
 
         return confirmed_idle
 
-    def _maybe_notify(self, gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> None:
+    def _maybe_notify(self, gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> bool:
         now = time.time()
         idle_indices = sorted(gpu.idx for gpu in confirmed_idle)
         last_idle_indices = sorted(self.state.last_notified_idle_set)
+        idle_notified = False
 
         if len(idle_indices) >= self.config.min_idle_gpus:
             state_changed = idle_indices != last_idle_indices
@@ -107,6 +114,7 @@ class GPUWatcher:
                 if self.notifier.send_markdown(title, body):
                     self.state.last_notified_idle_set = idle_indices
                     self.state.last_notify_time = now
+                    idle_notified = True
 
         if self.config.recover_notify:
             recovered_indices = sorted(set(last_idle_indices) - set(idle_indices))
@@ -117,26 +125,40 @@ class GPUWatcher:
                     title_prefix="GPU Recovered",
                     all_gpus=gpus,
                     target_gpus=recovered_gpus,
+                    target_status="RECOVERED",
                 )
                 if self.notifier.send_markdown(title, body):
                     self.state.last_notified_recover_set = recovered_indices
+                    # Move the baseline to current idle set so recovered alert is not repeated.
+                    self.state.last_notified_idle_set = idle_indices
+                    self.state.last_notify_time = now
 
-    def _maybe_run_auto_job(self, all_gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> None:
+        return idle_notified
+
+    def _maybe_run_auto_job(self, all_gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> bool:
         job_cfg = self.config.auto_run_job
         if not job_cfg.enabled:
-            return
+            return False
 
         idle_indices = sorted(gpu.idx for gpu in confirmed_idle)
         required_idle = max(self.config.min_idle_gpus, job_cfg.min_idle_gpus)
         if len(idle_indices) < required_idle:
-            return
+            if self.state.last_job_idle_set:
+                # Reset the idle cycle once GPUs become busy or insufficient.
+                self.state.last_job_idle_set = []
+            return False
 
         now = time.time()
-        state_changed = idle_indices != sorted(self.state.last_job_idle_set)
+        same_idle_set = idle_indices == sorted(self.state.last_job_idle_set)
         cooldown_ok = (now - self.state.last_job_run_time) >= job_cfg.cooldown_seconds
 
-        if not (state_changed or cooldown_ok):
-            return
+        # Only daemon mode needs a same-idle-set guard; once mode exits after one job.
+        if self.config.mode == "daemon":
+            if job_cfg.run_once_per_idle:
+                if same_idle_set:
+                    return False
+            elif same_idle_set and not cooldown_ok:
+                return False
 
         logging.info("Auto job triggered on idle GPUs: %s", idle_indices)
 
@@ -162,3 +184,19 @@ class GPUWatcher:
 
         self.state.last_job_idle_set = idle_indices
         self.state.last_job_run_time = time.time()
+        return True
+
+    def _should_stop_after_once_work(self, idle_notified: bool, job_ran: bool) -> bool:
+        # Personal queueing should finish cleanly instead of staying as a monitor.
+        if self.config.mode != "once":
+            return False
+
+        if job_ran:
+            logging.info("Once mode job finished. Exit watcher loop.")
+            return True
+
+        if not self.config.auto_run_job.enabled and idle_notified:
+            logging.info("Once mode idle notification sent. Exit watcher loop.")
+            return True
+
+        return False

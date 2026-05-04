@@ -13,6 +13,7 @@ def build_gpu_status_message(
     title_prefix: str,
     all_gpus: list[GPUInfo],
     target_gpus: list[GPUInfo],
+    target_status: str = "IDLE",
 ) -> tuple[str, str]:
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
     target_ids = ", ".join(f"GPU {gpu.idx}" for gpu in target_gpus) if target_gpus else "none"
@@ -32,7 +33,7 @@ def build_gpu_status_message(
     for gpu in all_gpus:
         users = ", ".join(gpu.users) if gpu.users else "-"
         if gpu.idx in target_set:
-            status = "IDLE"
+            status = target_status
         elif gpu.is_idle:
             status = "CANDIDATE"
         else:
@@ -100,6 +101,8 @@ def build_job_finish_message(
 
     if result.error:
         lines.append(f"**Error**: {result.error}")
+    if result.log_file:
+        lines.append(f"**Log File**: `{result.log_file}`")
 
     lines += [
         "",

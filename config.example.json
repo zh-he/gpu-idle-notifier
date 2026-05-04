@@ -1,32 +1,31 @@
-﻿{
-  "send_key": "your_serverchan_sendkey",
+{
+  "mode": "once",
   "server_name": "Lab-Server-01",
-  "check_interval": 300,
-  "idle_consecutive_hits": 2,
-  "recover_notify": true,
-  "cooldown_seconds": 1800,
-  "threshold": {
-    "util": 10,
-    "mem_mb": 2000,
-    "no_proc": true
+  "check_interval_minutes": 20,
+  "idle_consecutive_hits": 3,
+  "cooldown_minutes": 30,
+  "notify": {
+    "providers": [
+      {
+        "type": "serverchan",
+        "send_key": ""
+      },
+      {
+        "type": "feishu",
+        "webhook": ""
+      }
+    ]
   },
-  "watch_gpu_indices": [],
-  "min_idle_gpus": 1,
-  "state_file": "./gpu_idle_notifier_state.json",
-  "lock_file": "./gpu_idle_notifier.lock",
-  "log_file": "./gpu_idle_notifier.log",
-  "auto_run_job": {
+  "job": {
     "enabled": false,
-    "command": ["python", "train.py", "--epochs", "10"],
+    "command": "bash run.sh",
     "working_dir": ".",
-    "min_idle_gpus": 1,
-    "cooldown_seconds": 600,
+    "gpus": [],
+    "cooldown_minutes": 60,
     "timeout_seconds": 0,
-    "set_cuda_visible_devices": true,
     "notify_on_start": true,
     "notify_on_finish": true,
-    "extra_env": {
-      "PYTHONUNBUFFERED": "1"
-    }
+    "run_once_per_idle": true,
+    "log_dir": "./runtime/jobs"
   }
 }

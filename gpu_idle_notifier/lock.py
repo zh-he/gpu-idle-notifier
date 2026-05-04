@@ -27,10 +27,6 @@ class SingletonLock:
     def acquire(self) -> None:
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         self._file = self.lock_path.open("w+", encoding="utf-8")
-        self._file.seek(0)
-        self._file.write(str(os.getpid()))
-        self._file.truncate()
-        self._file.flush()
 
         try:
             if os.name == "nt":
@@ -46,6 +42,11 @@ class SingletonLock:
             self._file.close()
             self._file = None
             raise RuntimeError("Another watcher instance is already running.") from exc
+
+        self._file.seek(0)
+        self._file.write(str(os.getpid()))
+        self._file.truncate()
+        self._file.flush()
 
     def release(self) -> None:
         if not self._file:

@@ -1,137 +1,139 @@
 ﻿# GPU Idle Notifier
 
-[English README](./README.en.md)
+[中文README](./README.zh.md)
 
----
+Monitor NVIDIA GPUs on shared servers. When GPUs are idle, send notifications, optionally start a job, and send another notification when the job finishes.
 
-## 中文说明
+## Features
 
-### 项目简介
+- Monitor GPU utilization, memory usage, and compute processes with `nvidia-smi`
+- Confirm idle state after multiple consecutive checks
+- Send idle, recovery, job-start, and job-finish notifications
+- Support ServerChan, Feishu custom bot, and generic webhook
+- Run a Python script, shell script, or command sequence after GPUs become idle
+- Set `CUDA_VISIBLE_DEVICES` automatically for the started job
+- Support personal one-shot mode and admin daemon mode
+- Keep one watcher instance through a lock file
+- Write each job to an independent log file
 
-`GPU Idle Notifier` 是一个面向服务器场景的 GPU 空闲监控工具。它会周期性读取 `nvidia-smi` 数据，在 GPU 满足空闲条件时发送 ServerChan（微信）通知，并可自动触发你指定的任务脚本。
+## Modes
 
-### 功能特性
+| Mode | Use Case | Behavior |
+|---|---|---|
+| `once` | Personal job queue | Notify, run the configured job, send finish notification, then exit |
+| `daemon` | Admin monitoring | Keep monitoring and sending notifications until stopped |
 
-- 周期检测 GPU 利用率、显存占用、计算进程
-- 连续命中判定，降低误报
-- 空闲通知与恢复通知
-- 通知冷却时间控制
-- 空闲时自动执行任务（如 `python train.py`）
-- 自动任务开始和结束通知（含返回码、耗时）
-- 自动注入 `CUDA_VISIBLE_DEVICES`
-- 本地状态持久化
-- 单实例锁保护
+For admins, use `daemon` with Feishu and keep `job.enabled` as `false`.
 
-### 目录结构
+## Minimal Config
 
-```text
-gpu-idle-notifier/
-├── gpu_idle_notifier/
-│   ├── __main__.py
-│   ├── config.py
-│   ├── gpu_query.py
-│   ├── job_runner.py
-│   ├── lock.py
-│   ├── logging_utils.py
-│   ├── message_builder.py
-│   ├── models.py
-│   ├── notifier.py
-│   ├── state_store.py
-│   └── watcher.py
-├── config.example.json
-├── config.json
-├── gpu_idle_notifier.py
-├── pyproject.toml
-├── README.md
-├── README.en.md
-├── requirements.txt
-└── examples/
-    └── gpu-idle-notifier.service
-```
-
-### 安装
-
-```bash
-pip install -r requirements.txt
-```
-
-可选（开发模式安装）：
-
-```bash
-pip install -e .
-```
-
-### 快速开始
-
-1. 复制配置文件：
+Copy the example config:
 
 ```bash
 cp config.example.json config.json
 ```
 
-2. 修改 `config.json`，至少设置：
-
-- `send_key`
-- `server_name`
-- `auto_run_job.command`
-
-3. 启动监控：
-
-```bash
-python -m gpu_idle_notifier --config ./config.json
-```
-
-也可使用脚本入口：
-
-```bash
-python gpu_idle_notifier.py --config ./config.json
-```
-
-### 自动任务配置示例
+Example:
 
 ```json
 {
-  "auto_run_job": {
+  "mode": "once",
+  "server_name": "A100-Lab",
+  "check_interval_minutes": 20,
+  "idle_consecutive_hits": 3,
+  "cooldown_minutes": 30,
+  "notify": {
+    "providers": [
+      {
+        "type": "feishu",
+        "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+      }
+    ]
+  },
+  "job": {
     "enabled": true,
-    "command": ["python", "train.py", "--epochs", "10"],
+    "command": "bash run.sh",
     "working_dir": ".",
-    "min_idle_gpus": 1,
-    "cooldown_seconds": 600,
-    "timeout_seconds": 0,
-    "set_cuda_visible_devices": true,
+    "gpus": [0],
     "notify_on_start": true,
-    "notify_on_finish": true,
-    "extra_env": {
-      "PYTHONUNBUFFERED": "1"
-    }
+    "notify_on_finish": true
   }
 }
 ```
 
-### 核心配置项
+Admin notification-only config:
 
-| 字段 | 说明 |
+```json
+{
+  "mode": "daemon",
+  "server_name": "A100-Lab",
+  "check_interval_minutes": 20,
+  "idle_consecutive_hits": 3,
+  "cooldown_minutes": 30,
+  "notify": {
+    "providers": [
+      {
+        "type": "feishu",
+        "webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+      }
+    ]
+  },
+  "job": {
+    "enabled": false
+  }
+}
+```
+
+## Start And Stop
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start on server:
+
+```bash
+chmod +x scripts/*.sh
+./scripts/start.sh
+```
+
+Check status:
+
+```bash
+./scripts/status.sh
+```
+
+Watch logs:
+
+```bash
+tail -f runtime/gpu_idle_notifier.out
+```
+
+Stop:
+
+```bash
+./scripts/stop.sh
+```
+
+## Main Fields
+
+| Field | Description |
 |---|---|
-| `check_interval` | 轮询间隔（秒） |
-| `idle_consecutive_hits` | 连续命中次数，达到后判定空闲 |
-| `threshold.util` | 空闲最大 GPU 利用率（%） |
-| `threshold.mem_mb` | 空闲最大显存占用（MB） |
-| `threshold.no_proc` | 是否要求无计算进程 |
-| `min_idle_gpus` | 空闲通知的最少空闲 GPU 数 |
-| `cooldown_seconds` | 通知冷却时间（秒） |
-| `watch_gpu_indices` | 仅监控指定 GPU 序号 |
-| `auto_run_job.enabled` | 是否启用自动任务 |
-| `auto_run_job.command` | 自动执行命令 |
-| `auto_run_job.notify_on_start` | 任务开始时通知 |
-| `auto_run_job.notify_on_finish` | 任务结束时通知 |
-| `auto_run_job.set_cuda_visible_devices` | 注入空闲卡到 `CUDA_VISIBLE_DEVICES` |
+| `mode` | `once` or `daemon`; default `once` |
+| `check_interval_minutes` | GPU polling interval; default `20` |
+| `idle_consecutive_hits` | Consecutive idle checks required; default `3` |
+| `cooldown_minutes` | Notification cooldown; default `30` |
+| `threshold.util` | Max GPU utilization for idle; default `10` |
+| `threshold.mem_mb` | Max memory usage for idle; default `2000` |
+| `threshold.no_proc` | Require zero compute processes; default `true` |
+| `notify.providers` | Notification channels: `serverchan`, `feishu`, `webhook` |
+| `job.enabled` | Whether to run a job after GPUs become idle |
+| `job.command` | Command, Python script, shell script, or command sequence |
+| `job.gpus` | GPU indices to monitor and expose to the job |
+| `job.working_dir` | Job working directory |
+| `job.cooldown_minutes` | Job cooldown in daemon mode |
+| `job.log_dir` | Per-job log directory; default `./runtime/jobs` |
 
-### systemd
-
-示例文件：`examples/gpu-idle-notifier.service`
-
----
-
-## English
-
-For the complete English documentation, see [README.en.md](./README.en.md).
+Legacy fields such as `send_key`, `check_interval`, `cooldown_seconds`, `watch_gpu_indices`, and `auto_run_job` are still supported.

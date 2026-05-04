@@ -7,7 +7,7 @@ name = "gpu-idle-notifier"
 version = "0.1.0"
 description = "Monitor idle NVIDIA GPUs and send notifications, with optional auto job execution."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "GPU Idle Notifier Contributors" }]
 dependencies = [
@@ -23,7 +23,7 @@ packages = ["gpu_idle_notifier"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N"]
@@ -31,4 +31,4 @@ ignore = ["N818"]
 
 [tool.black]
 line-length = 100
-target-version = ["py39"]
+target-version = ["py310"]

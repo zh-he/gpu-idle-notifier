@@ -40,6 +40,20 @@ class MessageBuilderTests(unittest.TestCase):
         self.assertIn("IDLE", body)
         self.assertIn("BUSY", body)
 
+    def test_build_gpu_recovered_status_message(self) -> None:
+        gpus = [_gpu(0, False)]
+        title, body = build_gpu_status_message(
+            server_name="Server-A",
+            title_prefix="GPU Recovered",
+            all_gpus=gpus,
+            target_gpus=[gpus[0]],
+            target_status="RECOVERED",
+        )
+
+        self.assertIn("GPU Recovered Server-A", title)
+        self.assertIn("RECOVERED", body)
+        self.assertNotIn("| IDLE |", body)
+
     def test_build_job_messages(self) -> None:
         gpus = [_gpu(0, True)]
 
