@@ -27,6 +27,19 @@
 
 ## 最小配置
 
+克隆项目：
+
+```bash
+git clone https://github.com/zh-he/gpu-idle-notifier.git
+cd gpu-idle-notifier
+```
+
+安装依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
 复制配置模板：
 
 ```bash
@@ -85,12 +98,6 @@ cp config.example.json config.json
 ```
 
 ## 启动和停止
-
-安装依赖：
-
-```bash
-pip install -r requirements.txt
-```
 
 服务器启动：
 

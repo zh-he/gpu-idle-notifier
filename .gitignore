@@ -1,26 +1,28 @@
-﻿__pycache__/
-*.pyc
-*.pyo
-*.pyd
+﻿# Python
+__pycache__/
+*.py[cod]
 .venv/
-venv/
-env/
+*.egg-info/
+
+# Build and test artifacts
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.tmp-tests/
+
+# Runtime and local config
+runtime/
 *.log
 *.lock
 *.tmp
-*.swp
-*.swo
 *.json
 !config.example.json
-build/
-dist/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tmp-tests/
-runtime/
 .env
-.DS_Store
+
+# Editors and OS files
 .idea/
 .vscode/
+.DS_Store
+*.swp
+*.swo

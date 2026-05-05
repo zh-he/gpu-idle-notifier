@@ -1,5 +1,5 @@
 ﻿[Unit]
-Description=GPU Idle Notifier (WeChat)
+Description=GPU Idle Notifier
 After=network.target
 
 [Service]

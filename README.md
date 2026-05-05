@@ -27,7 +27,20 @@ For admins, use `daemon` with Feishu and keep `job.enabled` as `false`.
 
 ## Minimal Config
 
-Copy the example config:
+Clone the project:
+
+```bash
+git clone https://github.com/zh-he/gpu-idle-notifier.git
+cd gpu-idle-notifier
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Copy the config:
 
 ```bash
 cp config.example.json config.json
@@ -85,12 +98,6 @@ Admin notification-only config:
 ```
 
 ## Start And Stop
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
 
 Start on server:
 
