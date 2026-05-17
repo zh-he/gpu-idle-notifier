@@ -20,7 +20,7 @@
 
 | 模式 | 使用场景 | 行为 |
 |---|---|---|
-| `once` | 个人排队任务 | 通知、运行任务、发送完成通知，然后退出 |
+| `once` | 个人等待一次机会 | 运行一次任务后退出；未配置任务时，达到通知上限或发送恢复通知后退出 |
 | `daemon` | 管理员监控 | 持续监控并发送通知，直到手动停止 |
 
 管理员建议使用 `daemon`，通知方式用飞书，并保持 `job.enabled` 为 `false`。
@@ -54,6 +54,7 @@ cp config.example.json config.json
   "server_name": "A100-Lab",
   "check_interval_minutes": 20,
   "idle_consecutive_hits": 3,
+  "idle_notify_max_count": 3,
   "cooldown_minutes": 30,
   "notify": {
     "providers": [
@@ -82,6 +83,7 @@ cp config.example.json config.json
   "server_name": "A100-Lab",
   "check_interval_minutes": 20,
   "idle_consecutive_hits": 3,
+  "idle_notify_max_count": 3,
   "cooldown_minutes": 30,
   "notify": {
     "providers": [
@@ -131,7 +133,8 @@ tail -f runtime/gpu_idle_notifier.out
 | `mode` | `once` 或 `daemon`，默认 `once` |
 | `check_interval_minutes` | GPU 检查间隔，默认 `20` 分钟 |
 | `idle_consecutive_hits` | 连续空闲命中次数，默认 `3` |
-| `cooldown_minutes` | 通知冷却时间，默认 `30` 分钟 |
+| `idle_notify_max_count` | 同一轮空闲最多通知次数，默认 `3` |
+| `cooldown_minutes` | 指数空闲通知的基础冷却时间，默认 `30` 分钟 |
 | `threshold.util` | 判定空闲的最高 GPU 利用率，默认 `10` |
 | `threshold.mem_mb` | 判定空闲的最高显存占用，默认 `2000` |
 | `threshold.no_proc` | 是否要求没有计算进程，默认 `true` |

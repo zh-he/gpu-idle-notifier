@@ -12,6 +12,7 @@ class WatcherState:
     last_notified_idle_set: list[int] = field(default_factory=list)
     last_notified_recover_set: list[int] = field(default_factory=list)
     last_notify_time: float = 0.0
+    idle_notify_count: int = 0
     idle_hits: dict[str, int] = field(default_factory=dict)
 
     last_job_idle_set: list[int] = field(default_factory=list)
@@ -28,6 +29,7 @@ class WatcherState:
             last_notified_idle_set=[int(item) for item in raw.get("last_notified_idle_set", [])],
             last_notified_recover_set=[int(item) for item in raw.get("last_notified_recover_set", [])],
             last_notify_time=float(raw.get("last_notify_time", 0.0)),
+            idle_notify_count=int(raw.get("idle_notify_count", 0)),
             idle_hits={str(k): int(v) for k, v in idle_hits.items()},
             last_job_idle_set=[int(item) for item in raw.get("last_job_idle_set", [])],
             last_job_run_time=float(raw.get("last_job_run_time", 0.0)),
@@ -38,6 +40,7 @@ class WatcherState:
             "last_notified_idle_set": self.last_notified_idle_set,
             "last_notified_recover_set": self.last_notified_recover_set,
             "last_notify_time": self.last_notify_time,
+            "idle_notify_count": self.idle_notify_count,
             "idle_hits": self.idle_hits,
             "last_job_idle_set": self.last_job_idle_set,
             "last_job_run_time": self.last_job_run_time,

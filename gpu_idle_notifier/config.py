@@ -11,6 +11,7 @@ DEFAULT_CONFIG_ENV = "GPU_IDLE_NOTIFIER_CONFIG"
 DEFAULT_CHECK_INTERVAL_MINUTES = 20
 DEFAULT_IDLE_CONSECUTIVE_HITS = 3
 DEFAULT_NOTIFY_COOLDOWN_MINUTES = 30
+DEFAULT_IDLE_NOTIFY_MAX_COUNT = 3
 SEND_KEY_ENV_CANDIDATES = (
     "GPU_IDLE_NOTIFIER_SEND_KEY",
     "SERVERCHAN_SEND_KEY",
@@ -151,6 +152,7 @@ class AppConfig:
     server_name: str = "Lab-Server-01"
     check_interval: int = DEFAULT_CHECK_INTERVAL_MINUTES * 60
     idle_consecutive_hits: int = DEFAULT_IDLE_CONSECUTIVE_HITS
+    idle_notify_max_count: int = DEFAULT_IDLE_NOTIFY_MAX_COUNT
     recover_notify: bool = True
     cooldown_seconds: int = DEFAULT_NOTIFY_COOLDOWN_MINUTES * 60
     threshold: ThresholdConfig = field(default_factory=ThresholdConfig)
@@ -183,6 +185,14 @@ class AppConfig:
                     "idle_consecutive_hits",
                     "IDLE_CONSECUTIVE_HITS",
                     default=DEFAULT_IDLE_CONSECUTIVE_HITS,
+                )
+            ),
+            idle_notify_max_count=int(
+                _pick(
+                    raw,
+                    "idle_notify_max_count",
+                    "IDLE_NOTIFY_MAX_COUNT",
+                    default=DEFAULT_IDLE_NOTIFY_MAX_COUNT,
                 )
             ),
             recover_notify=_parse_bool(
@@ -242,6 +252,8 @@ class AppConfig:
             raise ValueError("check_interval_minutes/check_interval must be > 0")
         if self.idle_consecutive_hits <= 0:
             raise ValueError("idle_consecutive_hits must be > 0")
+        if self.idle_notify_max_count <= 0:
+            raise ValueError("idle_notify_max_count must be > 0")
         if self.cooldown_seconds < 0:
             raise ValueError("cooldown_minutes/cooldown_seconds must be >= 0")
         if self.min_idle_gpus <= 0:

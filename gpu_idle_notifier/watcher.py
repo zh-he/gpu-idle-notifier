@@ -62,9 +62,9 @@ class GPUWatcher:
         ) or "no-gpu"
         logging.info("Check completed | %s", summary)
 
-        idle_notified = self._maybe_notify(gpus, confirmed_idle)
+        idle_notified, recovered_notified = self._maybe_notify(gpus, confirmed_idle)
         job_ran = self._maybe_run_auto_job(gpus, confirmed_idle)
-        if self._should_stop_after_once_work(idle_notified, job_ran):
+        if self._should_stop_after_once_work(idle_notified, recovered_notified, job_ran):
             self.running = False
         self.state_store.save(self.state)
 
@@ -94,17 +94,24 @@ class GPUWatcher:
 
         return confirmed_idle
 
-    def _maybe_notify(self, gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> bool:
+    def _maybe_notify(self, gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> tuple[bool, bool]:
         now = time.time()
         idle_indices = sorted(gpu.idx for gpu in confirmed_idle)
         last_idle_indices = sorted(self.state.last_notified_idle_set)
         idle_notified = False
+        recovered_notified = False
 
         if len(idle_indices) >= self.config.min_idle_gpus:
             state_changed = idle_indices != last_idle_indices
-            cooldown_ok = (now - self.state.last_notify_time) >= self.config.cooldown_seconds
+            if state_changed:
+                self.state.idle_notify_count = 0
 
-            if state_changed or cooldown_ok:
+            cooldown_ok = (
+                now - self.state.last_notify_time
+            ) >= self._current_idle_notify_cooldown()
+            notify_count_ok = self.state.idle_notify_count < self.config.idle_notify_max_count
+
+            if notify_count_ok and (state_changed or cooldown_ok):
                 title, body = build_gpu_status_message(
                     server_name=self.config.server_name,
                     title_prefix="GPU Idle Alert",
@@ -114,7 +121,10 @@ class GPUWatcher:
                 if self.notifier.send_markdown(title, body):
                     self.state.last_notified_idle_set = idle_indices
                     self.state.last_notify_time = now
+                    self.state.idle_notify_count += 1
                     idle_notified = True
+        else:
+            self.state.idle_notify_count = 0
 
         if self.config.recover_notify:
             recovered_indices = sorted(set(last_idle_indices) - set(idle_indices))
@@ -132,8 +142,14 @@ class GPUWatcher:
                     # Move the baseline to current idle set so recovered alert is not repeated.
                     self.state.last_notified_idle_set = idle_indices
                     self.state.last_notify_time = now
+                    self.state.idle_notify_count = 0
+                    recovered_notified = True
 
-        return idle_notified
+        return idle_notified, recovered_notified
+
+    def _current_idle_notify_cooldown(self) -> int:
+        repeat_index = max(self.state.idle_notify_count - 1, 0)
+        return self.config.cooldown_seconds * (2**repeat_index)
 
     def _maybe_run_auto_job(self, all_gpus: list[GPUInfo], confirmed_idle: list[GPUInfo]) -> bool:
         job_cfg = self.config.auto_run_job
@@ -186,7 +202,12 @@ class GPUWatcher:
         self.state.last_job_run_time = time.time()
         return True
 
-    def _should_stop_after_once_work(self, idle_notified: bool, job_ran: bool) -> bool:
+    def _should_stop_after_once_work(
+        self,
+        idle_notified: bool,
+        recovered_notified: bool,
+        job_ran: bool,
+    ) -> bool:
         # Personal queueing should finish cleanly instead of staying as a monitor.
         if self.config.mode != "once":
             return False
@@ -195,8 +216,16 @@ class GPUWatcher:
             logging.info("Once mode job finished. Exit watcher loop.")
             return True
 
-        if not self.config.auto_run_job.enabled and idle_notified:
-            logging.info("Once mode idle notification sent. Exit watcher loop.")
+        if not self.config.auto_run_job.enabled and recovered_notified:
+            logging.info("Once mode recovered notification sent. Exit watcher loop.")
+            return True
+
+        if (
+            not self.config.auto_run_job.enabled
+            and idle_notified
+            and self.state.idle_notify_count >= self.config.idle_notify_max_count
+        ):
+            logging.info("Once mode idle notification limit reached. Exit watcher loop.")
             return True
 
         return False

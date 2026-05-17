@@ -3,6 +3,7 @@
   "server_name": "Lab-Server-01",
   "check_interval_minutes": 20,
   "idle_consecutive_hits": 3,
+  "idle_notify_max_count": 3,
   "cooldown_minutes": 30,
   "notify": {
     "providers": [

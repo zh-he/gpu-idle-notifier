@@ -3,6 +3,7 @@
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gpu_idle_notifier.config import AppConfig, AutoRunJobConfig
 from gpu_idle_notifier.job_runner import JobRunResult
@@ -94,9 +95,11 @@ class WatcherNotifyTests(unittest.TestCase):
         watcher.state.last_notified_idle_set = [0]
         gpus = [_busy_gpu(0)]
 
-        watcher._maybe_notify(gpus, confirmed_idle=[])
+        idle_notified, recovered_notified = watcher._maybe_notify(gpus, confirmed_idle=[])
         self.assertEqual(len(fake_notifier.titles), 1)
         self.assertIn("GPU Recovered", fake_notifier.titles[0])
+        self.assertFalse(idle_notified)
+        self.assertTrue(recovered_notified)
 
         watcher._maybe_notify(gpus, confirmed_idle=[])
         self.assertEqual(len(fake_notifier.titles), 1)
@@ -212,13 +215,43 @@ class WatcherNotifyTests(unittest.TestCase):
         self.assertEqual(fake_runner.calls, 1)
         self.assertTrue(watcher.running)
 
-    def test_once_mode_without_job_stops_after_idle_notification(self) -> None:
+    def test_idle_notifications_use_exponential_backoff_and_max_count(self) -> None:
+        cfg = AppConfig(
+            mode="daemon",
+            send_key="SCT-test",
+            server_name="Test-Server",
+            idle_consecutive_hits=1,
+            idle_notify_max_count=3,
+            min_idle_gpus=1,
+            cooldown_seconds=10,
+            **_config_paths("idle-backoff"),
+        )
+
+        watcher = GPUWatcher(cfg)
+        fake_notifier = _FakeNotifier()
+        watcher.notifier = fake_notifier
+        idle_gpus = [_idle_gpu(0)]
+
+        with patch("gpu_idle_notifier.watcher.time.time", side_effect=[100, 105, 110, 129, 130, 1000]):
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+            watcher._maybe_notify(idle_gpus, idle_gpus)
+
+        self.assertEqual(fake_notifier.titles.count("GPU Idle Alert Test-Server"), 3)
+        self.assertEqual(watcher.state.idle_notify_count, 3)
+
+    def test_once_mode_without_job_stops_after_idle_notification_limit(self) -> None:
         cfg = AppConfig(
             mode="once",
             send_key="SCT-test",
             server_name="Test-Server",
             idle_consecutive_hits=1,
+            idle_notify_max_count=2,
             min_idle_gpus=1,
+            cooldown_seconds=1,
             **_config_paths("once-notify"),
         )
 
@@ -227,11 +260,60 @@ class WatcherNotifyTests(unittest.TestCase):
         watcher.query_client = _FakeQueryClient([_idle_gpu(0)])
         watcher.notifier = fake_notifier
 
+        with patch("gpu_idle_notifier.watcher.time.time", side_effect=[100, 101]):
+            watcher.run_once()
+            self.assertTrue(watcher.running)
+            watcher.run_once()
+
+        self.assertEqual(len(fake_notifier.titles), 2)
+        self.assertFalse(watcher.running)
+
+    def test_once_mode_without_job_stops_after_recovered_notification(self) -> None:
+        cfg = AppConfig(
+            mode="once",
+            send_key="SCT-test",
+            server_name="Test-Server",
+            idle_consecutive_hits=1,
+            idle_notify_max_count=3,
+            min_idle_gpus=1,
+            **_config_paths("once-recovered"),
+        )
+
+        watcher = GPUWatcher(cfg)
+        fake_notifier = _FakeNotifier()
+        watcher.query_client = _FakeQueryClient([_idle_gpu(0)])
+        watcher.notifier = fake_notifier
+
+        watcher.run_once()
+        self.assertTrue(watcher.running)
+
+        watcher.query_client = _FakeQueryClient([_busy_gpu(0)])
         watcher.run_once()
 
-        self.assertEqual(len(fake_notifier.titles), 1)
+        self.assertEqual(len(fake_notifier.titles), 2)
         self.assertIn("GPU Idle Alert", fake_notifier.titles[0])
+        self.assertIn("GPU Recovered", fake_notifier.titles[1])
         self.assertFalse(watcher.running)
+
+    def test_daemon_mode_keeps_running_after_recovered_notification(self) -> None:
+        cfg = AppConfig(
+            mode="daemon",
+            send_key="SCT-test",
+            server_name="Test-Server",
+            idle_consecutive_hits=1,
+            min_idle_gpus=1,
+            **_config_paths("daemon-recovered"),
+        )
+
+        watcher = GPUWatcher(cfg)
+        watcher.query_client = _FakeQueryClient([_idle_gpu(0)])
+        watcher.notifier = _FakeNotifier()
+
+        watcher.run_once()
+        watcher.query_client = _FakeQueryClient([_busy_gpu(0)])
+        watcher.run_once()
+
+        self.assertTrue(watcher.running)
 
 
 if __name__ == "__main__":

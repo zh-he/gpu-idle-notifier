@@ -27,6 +27,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(cfg.mode, "once")
             self.assertEqual(cfg.check_interval, 20 * 60)
             self.assertEqual(cfg.idle_consecutive_hits, 3)
+            self.assertEqual(cfg.idle_notify_max_count, 3)
             self.assertEqual(cfg.cooldown_seconds, 30 * 60)
         finally:
             config_path.unlink(missing_ok=True)
@@ -146,6 +147,16 @@ class ConfigTests(unittest.TestCase):
             config_path.write_text(json.dumps({"mode": "admin"}), encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "mode must be one of"):
+                load_config(config_path)
+        finally:
+            config_path.unlink(missing_ok=True)
+
+    def test_invalid_idle_notify_max_count_is_rejected(self) -> None:
+        config_path = _temp_file("config-invalid-idle-notify-max")
+        try:
+            config_path.write_text(json.dumps({"idle_notify_max_count": 0}), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "idle_notify_max_count must be > 0"):
                 load_config(config_path)
         finally:
             config_path.unlink(missing_ok=True)

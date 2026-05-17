@@ -20,7 +20,7 @@ Monitor NVIDIA GPUs on shared servers. When GPUs are idle, send notifications, o
 
 | Mode | Use Case | Behavior |
 |---|---|---|
-| `once` | Personal job queue | Notify, run the configured job, send finish notification, then exit |
+| `once` | Personal one-time wait | Run one job and exit; without a job, exit after notification limit or recovered notification |
 | `daemon` | Admin monitoring | Keep monitoring and sending notifications until stopped |
 
 For admins, use `daemon` with Feishu and keep `job.enabled` as `false`.
@@ -54,6 +54,7 @@ Example:
   "server_name": "A100-Lab",
   "check_interval_minutes": 20,
   "idle_consecutive_hits": 3,
+  "idle_notify_max_count": 3,
   "cooldown_minutes": 30,
   "notify": {
     "providers": [
@@ -82,6 +83,7 @@ Admin notification-only config:
   "server_name": "A100-Lab",
   "check_interval_minutes": 20,
   "idle_consecutive_hits": 3,
+  "idle_notify_max_count": 3,
   "cooldown_minutes": 30,
   "notify": {
     "providers": [
@@ -131,7 +133,8 @@ Stop:
 | `mode` | `once` or `daemon`; default `once` |
 | `check_interval_minutes` | GPU polling interval; default `20` |
 | `idle_consecutive_hits` | Consecutive idle checks required; default `3` |
-| `cooldown_minutes` | Notification cooldown; default `30` |
+| `idle_notify_max_count` | Max idle alerts for the same idle cycle; default `3` |
+| `cooldown_minutes` | Base cooldown for exponential idle alerts; default `30` |
 | `threshold.util` | Max GPU utilization for idle; default `10` |
 | `threshold.mem_mb` | Max memory usage for idle; default `2000` |
 | `threshold.no_proc` | Require zero compute processes; default `true` |
